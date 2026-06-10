@@ -114,4 +114,13 @@ impl VectorStore for PgVectorStore {
 
         Ok(result.rows_affected())
     }
+
+    #[instrument(skip(self))]
+    async fn delete(&self, id: Uuid) -> Result<(), VectorError> {
+        sqlx::query("DELETE FROM cache_entries WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
 }

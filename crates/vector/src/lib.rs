@@ -39,4 +39,7 @@ pub trait VectorStore: Send + Sync {
 
     /// Remove entries older than `days` days (TTL pruning).
     async fn prune_older_than(&self, days: i64) -> Result<u64, VectorError>;
+
+    /// Delete a single entry by ID (used to clean up stale KV-miss rows).
+    async fn delete(&self, id: Uuid) -> Result<(), VectorError>;
 }

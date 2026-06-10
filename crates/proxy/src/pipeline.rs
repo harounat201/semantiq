@@ -1,17 +1,14 @@
-use crate::{llm::LlmClient, state::AppState};
+use crate::state::AppState;
 use hex::encode as hex_encode;
-use semantiq_cache::KvStore;
 use semantiq_embedding::preprocess;
 use semantiq_monitoring::metrics::{emit, RequestMetrics};
-use semantiq_types::{AdmissionDecision, CacheResult, Query};
+use semantiq_types::{AdmissionDecision, CacheResult, EmbeddingVector, Query};
 use sha2::{Digest, Sha256};
 use std::time::{Duration, Instant};
 use tracing::instrument;
 
-/// Run the full SemantiQ pipeline for a raw query string.
-/// Returns the response text to send back to the caller.
-#[instrument(skip(state, llm))]
-pub async fn run(raw: &str, state: &AppState, llm: &LlmClient) -> String {
+#[instrument(skip(state))]
+pub async fn run(raw: &str, state: &AppState) -> String {
     let start = Instant::now();
 
     let normalized = preprocess::normalize(raw);
@@ -26,16 +23,14 @@ pub async fn run(raw: &str, state: &AppState, llm: &LlmClient) -> String {
         hash: hash.clone(),
     };
 
-    // --- Phase 1: embed ---
     let vec = match state.embedder.embed(&normalized).await {
         Ok(v) => v,
         Err(e) => {
             tracing::error!(error = %e, "embedding failed, falling back to LLM");
-            return llm_fallback(llm, raw, &query, state, start).await;
+            return llm_fallback(raw, &query, state, start).await;
         }
     };
 
-    // --- Phase 2: vector search ---
     let cache_result = match state
         .vector_store
         .search(&vec, state.config.similarity_threshold)
@@ -43,7 +38,6 @@ pub async fn run(raw: &str, state: &AppState, llm: &LlmClient) -> String {
     {
         Ok(Some(hit)) => {
             tracing::debug!(distance = hit.distance, "vector hit");
-            // Phase 3: Redis lookup
             match state.kv_store.get(&hit.entry.redis_key).await {
                 Ok(Some(cached)) => CacheResult::KvHit { response: cached },
                 Ok(None) => CacheResult::VectorHitKvMiss { entry: hit.entry },
@@ -72,80 +66,87 @@ pub async fn run(raw: &str, state: &AppState, llm: &LlmClient) -> String {
             response
         }
 
-        CacheResult::VectorHitKvMiss { .. } | CacheResult::Miss => {
-            // --- Phase 5: LLM call ---
-            let llm_resp = match llm.complete(raw).await {
-                Ok(r) => r,
-                Err(e) => {
-                    tracing::error!(error = %e, "LLM call failed");
-                    return "upstream error".to_string();
-                }
-            };
-
-            let response = llm_resp.content.clone();
-
-            // --- Phase 4: async admission + write-back ---
-            let state_clone = state.clone();
-            let llm_resp_clone = llm_resp;
-            let query_clone = query;
-            let vec_clone = vec;
-            let ttl = Duration::from_secs(state.config.cache_ttl_secs);
-
+        CacheResult::VectorHitKvMiss { entry } => {
+            // pgvector row exists but Redis key is gone — prune the stale entry
+            let vs = state.vector_store.clone();
+            let stale_id = entry.id;
             tokio::spawn(async move {
-                let decision = state_clone
-                    .admission
-                    .evaluate(&query_clone, &llm_resp_clone)
-                    .await;
-
-                if decision == AdmissionDecision::Accept {
-                    let redis_key = format!("semantiq:resp:{}", query_clone.hash);
-
-                    let write_ok = state_clone
-                        .kv_store
-                        .set(&redis_key, &llm_resp_clone.content, ttl)
-                        .await
-                        .is_ok();
-
-                    if write_ok {
-                        if let Err(e) = state_clone
-                            .vector_store
-                            .insert(&query_clone.hash, &redis_key, &vec_clone)
-                            .await
-                        {
-                            tracing::warn!(error = %e, "pgvector insert failed");
-                        } else {
-                            tracing::info!(hash = %query_clone.hash, "cache entry admitted");
-                        }
-                    }
+                if let Err(e) = vs.delete(stale_id).await {
+                    tracing::warn!(error = %e, id = %stale_id, "failed to delete stale vector entry");
                 }
             });
-
-            emit(&RequestMetrics {
-                query_hash: hash,
-                vector_hit: matches!(cache_result, CacheResult::VectorHitKvMiss { .. }),
-                kv_hit: false,
-                admitted: false, // actual decision happens async
-                latency_ms: start.elapsed().as_millis() as u64,
-            });
-
-            response
+            call_llm_and_admit(raw, &query, &vec, state, start, true).await
         }
+
+        CacheResult::Miss => call_llm_and_admit(raw, &query, &vec, state, start, false).await,
     }
 }
 
-async fn llm_fallback(
-    llm: &LlmClient,
+async fn call_llm_and_admit(
     raw: &str,
     query: &Query,
-    _state: &AppState,
+    vec: &EmbeddingVector,
+    state: &AppState,
     start: Instant,
+    vector_hit: bool,
 ) -> String {
-    let resp = llm.complete(raw).await.unwrap_or_else(|_| {
-        semantiq_types::LlmResponse {
-            content: "upstream error".to_string(),
-            status_ok: false,
-            latency_ms: 0,
+    let llm_resp = match state.llm.complete(raw).await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!(error = %e, "LLM call failed");
+            return "upstream error".to_string();
         }
+    };
+
+    let response = llm_resp.content.clone();
+    let latency_ms = start.elapsed().as_millis() as u64;
+
+    let state_clone = state.clone();
+    let query_clone = query.clone();
+    let vec_clone = vec.clone();
+    let ttl = Duration::from_secs(state.config.cache_ttl_secs);
+
+    tokio::spawn(async move {
+        let decision = state_clone.admission.evaluate(&query_clone, &llm_resp).await;
+        let admitted = decision == AdmissionDecision::Accept;
+
+        emit(&RequestMetrics {
+            query_hash: query_clone.hash.clone(),
+            vector_hit,
+            kv_hit: false,
+            admitted,
+            latency_ms,
+        });
+
+        if admitted {
+            let redis_key = format!("semantiq:resp:{}", query_clone.hash);
+            let write_ok = state_clone
+                .kv_store
+                .set(&redis_key, &llm_resp.content, ttl)
+                .await
+                .is_ok();
+            if write_ok {
+                if let Err(e) = state_clone
+                    .vector_store
+                    .insert(&query_clone.hash, &redis_key, &vec_clone)
+                    .await
+                {
+                    tracing::warn!(error = %e, "pgvector insert failed");
+                } else {
+                    tracing::info!(hash = %query_clone.hash, "cache entry admitted");
+                }
+            }
+        }
+    });
+
+    response
+}
+
+async fn llm_fallback(raw: &str, query: &Query, state: &AppState, start: Instant) -> String {
+    let resp = state.llm.complete(raw).await.unwrap_or_else(|_| semantiq_types::LlmResponse {
+        content: "upstream error".to_string(),
+        status_ok: false,
+        latency_ms: 0,
     });
 
     emit(&RequestMetrics {

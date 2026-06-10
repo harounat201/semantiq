@@ -9,6 +9,19 @@ pub struct Config {
     // --- openai ---
     pub openai_api_key: String,
 
+    // --- anthropic ---
+    #[serde(default)]
+    pub anthropic_api_key: Option<String>,
+
+    // --- llm ---
+    /// "openai" or "anthropic". Default: "openai"
+    #[serde(default = "defaults::llm_provider")]
+    pub llm_provider: String,
+
+    /// Model for completions. Default: "gpt-4o-mini"
+    #[serde(default = "defaults::llm_model")]
+    pub llm_model: String,
+
     // --- postgres ---
     pub database_url: String,
 
@@ -40,6 +53,8 @@ mod defaults {
     pub fn admission_frequency() -> u32 { 3 }
     pub fn cache_ttl_secs() -> u64 { 86_400 }
     pub fn port() -> u16 { 8080 }
+    pub fn llm_provider() -> String { "openai".to_string() }
+    pub fn llm_model() -> String { "gpt-4o-mini".to_string() }
 }
 
 impl Config {

@@ -19,6 +19,7 @@ pub trait KvStore: Send + Sync {
     async fn set(&self, key: &str, value: &str, ttl: Duration) -> Result<(), CacheError>;
     async fn increment_score(&self, set_key: &str, member: &str) -> Result<f64, CacheError>;
     async fn get_score(&self, set_key: &str, member: &str) -> Result<Option<f64>, CacheError>;
+    async fn ping(&self) -> Result<(), CacheError>;
 }
 
 pub struct RedisKvStore {
@@ -62,5 +63,12 @@ impl KvStore for RedisKvStore {
         let mut conn = self.pool.get().await?;
         let score: Option<f64> = conn.zscore(set_key, member).await?;
         Ok(score)
+    }
+
+    #[instrument(skip(self))]
+    async fn ping(&self) -> Result<(), CacheError> {
+        let mut conn = self.pool.get().await?;
+        redis::cmd("PING").query_async::<()>(&mut *conn).await?;
+        Ok(())
     }
 }

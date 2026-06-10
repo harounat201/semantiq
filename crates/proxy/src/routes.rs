@@ -1,4 +1,4 @@
-use crate::{llm::LlmClient, pipeline, state::AppState};
+use crate::{pipeline, state::AppState};
 use axum::{
     body::Body,
     extract::{Request, State},
@@ -37,7 +37,6 @@ pub async fn auth_middleware(
     request: Request<Body>,
     next: Next,
 ) -> Response {
-    // /health is exempt from auth
     if request.uri().path() == "/health" {
         return next.run(request).await;
     }
@@ -58,15 +57,15 @@ async fn query_handler(
     State(state): State<AppState>,
     Json(body): Json<QueryRequest>,
 ) -> impl IntoResponse {
-    let llm = LlmClient::new(&state.config.openai_api_key);
-    let response = pipeline::run(&body.query, &state, &llm).await;
+    let response = pipeline::run(&body.query, &state).await;
     Json(QueryResponse { response })
 }
 
 async fn health_handler(State(state): State<AppState>) -> impl IntoResponse {
     let pg_ok = sqlx::query("SELECT 1").execute(&state.pool).await.is_ok();
+    let redis_ok = state.kv_store.ping().await.is_ok();
 
-    if pg_ok {
+    if pg_ok && redis_ok {
         (StatusCode::OK, Json(HealthResponse { status: "ok" })).into_response()
     } else {
         (

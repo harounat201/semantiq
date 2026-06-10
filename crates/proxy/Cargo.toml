@@ -16,6 +16,7 @@ semantiq-cache = { path = "../cache" }
 semantiq-admission = { path = "../admission" }
 semantiq-monitoring = { path = "../monitoring" }
 
+async-trait = { workspace = true }
 tokio = { workspace = true }
 axum = { workspace = true }
 tower = { workspace = true }
