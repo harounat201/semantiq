@@ -1,0 +1,13 @@
+[package]
+name = "semantiq-cache"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+deadpool-redis = { workspace = true }
+redis = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }

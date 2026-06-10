@@ -1,0 +1,48 @@
+services:
+  proxy:
+    build: .
+    ports:
+      - "8080:8080"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://semantiq:semantiq@postgres:5432/semantiq
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - semantiq
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: semantiq
+      POSTGRES_PASSWORD: semantiq
+      POSTGRES_DB: semantiq
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U semantiq"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - semantiq
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - semantiq
+
+networks:
+  semantiq:
+
+volumes:
+  pgdata:

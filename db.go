@@ -1,1 +1,0 @@
-// spin up a weviate instance for the vector database.

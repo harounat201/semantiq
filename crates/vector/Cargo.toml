@@ -1,0 +1,16 @@
+[package]
+name = "semantiq-vector"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+semantiq-types = { path = "../types" }
+async-trait = { workspace = true }
+sqlx = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }

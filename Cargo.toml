@@ -1,0 +1,60 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/types",
+    "crates/config",
+    "crates/embedding",
+    "crates/vector",
+    "crates/cache",
+    "crates/admission",
+    "crates/monitoring",
+    "crates/proxy",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["SemantiQ"]
+
+[workspace.dependencies]
+# async
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+
+# web
+axum = { version = "0.7", features = ["json", "macros"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["trace", "cors"] }
+
+# http client
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+# serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# database
+sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls", "uuid", "chrono", "migrate"] }
+
+# redis
+deadpool-redis = "0.18"
+redis = { version = "0.27", features = ["tokio-comp", "aio"] }
+
+# ids & hashing
+uuid = { version = "1", features = ["v4", "serde"] }
+sha2 = "0.10"
+hex = "0.4"
+
+# config
+envy = "0.4"
+
+# error handling
+anyhow = "1"
+thiserror = "2"
+
+# logging / tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# time
+chrono = { version = "0.4", features = ["serde"] }

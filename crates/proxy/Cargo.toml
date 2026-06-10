@@ -1,0 +1,31 @@
+[package]
+name = "semantiq-proxy"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "semantiq"
+path = "src/main.rs"
+
+[dependencies]
+semantiq-types = { path = "../types" }
+semantiq-config = { path = "../config" }
+semantiq-embedding = { path = "../embedding" }
+semantiq-vector = { path = "../vector" }
+semantiq-cache = { path = "../cache" }
+semantiq-admission = { path = "../admission" }
+semantiq-monitoring = { path = "../monitoring" }
+
+tokio = { workspace = true }
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+uuid = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }

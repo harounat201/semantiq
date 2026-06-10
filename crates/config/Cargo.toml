@@ -1,0 +1,9 @@
+[package]
+name = "semantiq-config"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+envy = { workspace = true }
+anyhow = { workspace = true }
