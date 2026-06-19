@@ -1,5 +1,6 @@
 pub mod composite;
 pub mod frequency;
+pub mod latency;
 
 use async_trait::async_trait;
 use semantiq_types::{AdmissionDecision, LlmResponse, Query};
