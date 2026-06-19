@@ -38,6 +38,10 @@ pub struct Config {
     #[serde(default = "defaults::admission_frequency")]
     pub admission_frequency: u32,
 
+    /// Minimum LLM latency (ms) for a response to be cache-eligible. Default: 0 (all responses)
+    #[serde(default)]
+    pub min_cache_latency_ms: u64,
+
     // --- cache TTL ---
     /// Redis TTL in seconds. Default: 86400 (24h)
     #[serde(default = "defaults::cache_ttl_secs")]

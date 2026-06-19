@@ -1,5 +1,7 @@
 use anyhow::Result;
-use semantiq_admission::{composite::CompositePolicy, frequency::FrequencyPolicy, AdmissionPolicy};
+use semantiq_admission::{
+    composite::CompositePolicy, frequency::FrequencyPolicy, latency::LatencyPolicy, AdmissionPolicy,
+};
 use semantiq_cache::{KvStore, RedisKvStore};
 use semantiq_config::Config;
 use semantiq_embedding::{openai::OpenAIEmbedder, Embedder};
@@ -25,6 +27,7 @@ impl AppState {
 
         let admission: Arc<dyn AdmissionPolicy> = Arc::new(CompositePolicy::new(vec![
             Box::new(FrequencyPolicy::new(kv_store.clone(), config.admission_frequency)),
+            Box::new(LatencyPolicy::new(config.min_cache_latency_ms)),
         ]));
 
         let llm: Arc<dyn LlmProvider> = match config.llm_provider.as_str() {
